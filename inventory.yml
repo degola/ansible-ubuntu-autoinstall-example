@@ -1,0 +1,28 @@
+all:
+  vars:
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+  hosts:
+    srv1:
+      ansible_host: 10.80.7.1
+      vm_network_name: vms
+      vm_network_ip: 10.80.7.1
+      vm_network_dhcp_start: 10.80.7.100
+      vm_network_dhcp_end: 10.80.7.200
+      vm_configuration:
+        - name: ubuntu1
+          cpu_cores: 4
+          ram: 2048
+          disk_size: 30
+          ip: 10.80.7.200
+          initial_user:
+            username: your-username
+            fullname: "Your Full Name"
+            pubkey_filename: "your-ssh-pubkey"
+            # admin is a group for users and allows sudo without a password to gain root access
+            groups:
+              - users
+              - admin
+  children:
+    bare-metal-compute:
+      hosts:
+        srv1:

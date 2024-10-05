@@ -1,0 +1,9 @@
+- hosts: bare-metal-compute
+  become: yes
+  become_user: root
+  vars_files:
+    - "vars/users.yml"
+    - "vars/main.yml"
+  roles:
+    - install_kvm_guests
+  debugger: on_failed

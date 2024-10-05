@@ -1,0 +1,104 @@
+#cloud-config
+# See the autoinstall documentation at:
+# https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
+autoinstall:
+  storage:
+    layout:
+      name: lvm
+      sizing-policy: all
+  apt:
+    disable_components: []
+    fallback: offline-install
+    geoip: true
+    mirror-selection:
+      primary:
+        - country-mirror
+        - arches: &id001
+            - amd64
+            - i386
+          uri: http://archive.ubuntu.com/ubuntu/
+        - arches: &id002
+            - s390x
+            - arm64
+            - armhf
+            - powerpc
+            - ppc64el
+            - riscv64
+          uri: http://ports.ubuntu.com/ubuntu-ports
+    preserve_sources_list: false
+    security:
+      - arches: *id001
+        uri: http://security.ubuntu.com/ubuntu/
+      - arches: *id002
+        uri: http://ports.ubuntu.com/ubuntu-ports
+  codecs:
+    install: false
+  drivers:
+    install: false
+  user-data:
+    users:
+      - name: {{ item.initial_user.username }}
+        gecos: {{ item.initial_user.fullname }}
+        groups: {{ ",".join(item.initial_user.groups) }}
+        shell: /bin/bash
+        ssh_authorized_keys:
+          - {% include './ssh-keys/' + item.initial_user.pubkey_filename %}
+
+  kernel:
+    package: linux-generic
+  keyboard:
+    layout: us
+    toggle: null
+    variant: ''
+  locale: C.UTF-8
+  network:
+    ethernets:
+      enp1s0:
+        dhcp4: true
+    version: 2
+  oem:
+    install: auto
+  source:
+    id: ubuntu-server
+    search_drivers: false
+  packages:
+    - qemu-guest-agent
+    - linux-image-virtual
+    - linux-tools-virtual
+    - htop
+    - joe
+  ssh:
+    allow-pw: true
+    authorized-keys: []
+    install-server: true
+
+  late-commands:
+    - |
+      bash <<'EOF'
+        sed -ie 's/GRUB_CMDLINE_LINUX=.*/GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200n8 serial"/' /target/etc/default/grub
+        echo "{{ item.name }}" >/target/etc/hostname
+        echo 'Defaults    env_keep+=SSH_AUTH_SOCK' >/target/etc/sudoers.d/admin
+        echo '%admin ALL=(ALL:ALL) NOPASSWD: ALL' >>/target/etc/sudoers.d/admin
+      EOF
+      true
+    - curtin in-target -- update-grub2 || true
+    - curtin in-target -- apt-get -y install linux-cloud-tools-virtual || true
+    - curtin in-target -- systemctl enable qemu-guest-agent || true
+    - curtin in-target -- groupadd admin || true
+    - curtin in-target -- usermod -a -G admin degola || true
+
+  updates: security
+  version: 1
+  refresh-installer:
+    update: yes
+  # we let ansible run the full installation in autoconsole mode to continue vm provisioning
+  # immediately after the installation is done
+  shutdown: poweroff
+
+write_files:
+  # override the kernel package
+  - path: /run/kernel-meta-package
+    content: |
+      linux-virtual
+    owner: root:root
+    permissions: "0644"

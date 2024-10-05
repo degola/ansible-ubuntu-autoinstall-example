@@ -1,0 +1,22 @@
+- name: install cloud-image-utils to create a SEED ISO image with autoinstall configuration
+  apt:
+    name:
+      - cloud-image-utils
+
+- name: deploy network restart script to detach/reattach network device
+  template:
+    src: baremetal/restart-libvirtd-network.sh.j2
+    dest: '/usr/local/sbin/restart-libvirtd-network'
+    mode: 0700
+    owner: root
+    group: root
+    backup: no
+
+- name: download ubuntu iso file
+  get_url:
+    url: "https://releases.ubuntu.com/noble/ubuntu-24.04.1-live-server-amd64.iso"
+    dest: "/var/lib/libvirt/images/ubuntu-24.04.1-live-server-amd64.iso"
+
+- name: install virtual machine
+  include_tasks: install_single_virtual_machine.yml
+  loop: "{{ hostvars[inventory_hostname].vm_configuration }}"

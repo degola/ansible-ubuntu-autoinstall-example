@@ -1,0 +1,93 @@
+- name: list all VMs
+  community.libvirt.virt:
+    command: list_vms
+  register: all_vms
+
+- name: list all running VMs
+  community.libvirt.virt:
+    command: list_vms
+    state: running
+  register: all_running_vms
+
+- name: allocate random hex string for mac
+  shell: openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/:$//; s/^/52:54:00:/'
+  register: guest_mac_address
+  when: "item.name not in all_vms.list_vms and item.mac is undefined"
+
+- name: add new guests mac address to network (with auto-generated mac address)
+  shell: "virsh net-update {{ hostvars[inventory_hostname].vm_network_name }} add ip-dhcp-host \
+    \"<host mac='{{ guest_mac_address.stdout }}' \
+    name='{{ item.name }}' ip='{{ item.ip }}' />\" \
+    --live --config"
+  when: "item.name not in all_vms.list_vms and item.mac is undefined"
+
+- name: add new guests mac address to network (with manually defined mac address)
+  shell: "virsh net-update {{ hostvars[inventory_hostname].vm_network_name }} add ip-dhcp-host \
+    \"<host mac='{{ item.mac }}' \
+    name='{{ item.name }}' ip='{{ item.ip }}' />\" \
+    --live --config"
+  when: "item.name not in all_vms.list_vms and item.mac is defined"
+
+
+- name: ensure cloud-init tmp directory exists to create SEED ISO
+  file:
+    path: '/var/lib/libvirt/images/autoinstall-seed-iso/{{ item.name }}/'
+    state: directory
+
+- name: deploy ubuntu autoinstall yaml for ubuntu 24.04 and current virtual machine name
+  template:
+    src: baremetal/ubuntu24.04-auto-install.yaml.j2
+    dest: '/var/lib/libvirt/images/autoinstall-seed-iso/{{ item.name }}/user-data'
+    mode: 0600
+    owner: root
+    group: root
+    backup: no
+  when: "item.name not in all_vms.list_vms"
+
+- name: create seed iso file for autoinstall for specific virtual machine name
+  shell: |
+    rm -f /var/lib/libvirt/images/autoinstall-seed-iso/{{ item.name }}.iso 
+    touch /var/lib/libvirt/images/autoinstall-seed-iso/{{ item.name }}/meta-data
+    cloud-localds /var/lib/libvirt/images/autoinstall-seed-iso/{{ item.name }}.iso \
+      /var/lib/libvirt/images/autoinstall-seed-iso/{{ item.name }}/user-data \
+      /var/lib/libvirt/images/autoinstall-seed-iso/{{ item.name }}/meta-data
+  when: "item.name not in all_vms.list_vms"
+
+- name: install virtual machine
+  shell:
+    cmd: "virt-install \
+      --boot uefi \
+      --name {{ item.name }} \
+      --ram {{ item.ram }} \
+      --disk pool=vms,size={{ item.disk_size }},bus=virtio,sparse=false,cache=none,io=native \
+      --disk path=/var/lib/libvirt/images/autoinstall-seed-iso/{{ item.name }}.iso,format=raw,cache=none,bus=virtio \
+      --vcpus {{ item.cpu_cores }} \
+      --virt-type kvm \
+      --os-variant ubuntu24.04 \
+      --network network={{ hostvars[inventory_hostname].vm_network_name }},model=virtio,mac={{ guest_mac_address.stdout }} \
+      --graphics none \
+      --autostart \
+      --location '/var/lib/libvirt/images/ubuntu-24.04.1-live-server-amd64.iso,kernel=casper/vmlinuz,initrd=casper/initrd' \
+      --console pty,target_type=serial \
+      --extra-args='autoinstall console=tty0 console=ttyS0,115200n8 serial'
+      --noautoconsole"
+    chdir: /tmp
+  when: "item.name not in all_vms.list_vms"
+
+- name: configure autostart of virtual machine
+  shell: "virsh autostart {{ item.name }}"
+  when: "item.name not in all_running_vms.list_vms"
+
+- name: wait until virt-install is finished
+  shell: (virsh list | grep '{{ item.name }}') || true
+  register: wait_for_install_finished
+  # wait 5 minutes until the vm is installed, this may be too short, adjust accordingly to your needs
+  delay: 30
+  retries: 10
+  until: wait_for_install_finished.stdout_lines | list | count == 0
+  when: "item.name not in all_running_vms.list_vms"
+
+- name: start virtual machines not started
+  shell: "virsh start {{ item.name }}"
+  when: "item.name not in all_running_vms.list_vms"
+  ignore_errors: yes
