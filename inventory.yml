@@ -4,6 +4,7 @@ all:
   hosts:
     srv1:
       ansible_host: 10.80.7.1
+      vm_disk_pool: vms
       vm_network_name: vms
       vm_network_ip: 10.80.7.1
       vm_network_dhcp_start: 10.80.7.100

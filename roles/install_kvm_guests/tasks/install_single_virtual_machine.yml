@@ -59,7 +59,7 @@
       --boot uefi \
       --name {{ item.name }} \
       --ram {{ item.ram }} \
-      --disk pool=vms,size={{ item.disk_size }},bus=virtio,sparse=false,cache=none,io=native \
+      --disk pool={{ hostvars[inventory_hostname].vm_disk_pool }},size={{ item.disk_size }},bus=virtio,sparse=false,cache=none,io=native \
       --disk path=/var/lib/libvirt/images/autoinstall-seed-iso/{{ item.name }}.iso,format=raw,cache=none,bus=virtio \
       --vcpus {{ item.cpu_cores }} \
       --virt-type kvm \
