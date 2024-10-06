@@ -73,6 +73,7 @@ autoinstall:
     install-server: true
 
   late-commands:
+    # enable serial console for virsh console
     - |
       bash <<'EOF'
         sed -ie 's/GRUB_CMDLINE_LINUX=.*/GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200n8 serial"/' /target/etc/default/grub
@@ -81,11 +82,14 @@ autoinstall:
         echo '%admin ALL=(ALL:ALL) NOPASSWD: ALL' >>/target/etc/sudoers.d/admin
       EOF
       true
+    # update grub with updated kernel parameters
     - curtin in-target -- update-grub2 || true
+    # install cloud tools and enable qemu-guest-agent
     - curtin in-target -- apt-get -y install linux-cloud-tools-virtual || true
     - curtin in-target -- systemctl enable qemu-guest-agent || true
+    # ensure admin group is created and user is added to it
     - curtin in-target -- groupadd admin || true
-    - curtin in-target -- usermod -a -G admin degola || true
+    - curtin in-target -- usermod -a -G admin {{ item.initial_user.username }} || true
 
   updates: security
   version: 1
